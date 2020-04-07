@@ -1,0 +1,167 @@
+吹水不愁之前端路由(含代码实现)
+=================
+
+写在正文前: 作为一位已经工作了两年的前端 CRUD boy, 为到此时才写下自己的第一篇技术博客感到十分的愧疚, 但是毕竟老话说的好千里之行始于足下嘛, 写下第一篇文章就是为了消除自己的惰性, 从现在起也希望自己能开始并坚持自己的博客之路, 也希望各位大佬多多指正, 给小弟一个提升的机会
+
+什么是路由? 前端路由出现之前又是怎么实现路由的?
+-----------------
+
+简单来说, 在浏览器中的路由就是 url 到服务器资源的一个映射; 后端路由就是通过每次用户发出不同请求的 url, 服务端根据请求内容将具体所需的资源返回至用户端. 返回的资源往往是经过处理之后可以直接展示的静态 html 文件, 一般来说每次 url 的变化都会出现以下几个步骤:
+
+1. 浏览器刷新发出请求;
+2. 服务器监听到 80 端口（或 443）有请求过来，并解析 url 路径;
+3. 根据服务器的路由配置，找到对应的 html 模板和所需要的数据, 将数据渲染至模板文件当中, 再返回给浏览器;
+4. 浏览器根据数据包的Content-Type来决定如何解析数据;
+
+在前后端分离的概念出现前的很长时间里, 后端路由都是网页路由的唯一选择, 前端只需要安安心心做好自己'切图仔'的工作, 提供静态资源和模板文件给后端即可, 但是随着日益增长的浏览体验需求以及浏览器性能的提升, 人们发现后端路由存在着以下的一些问题:
+* 每一次链接的跳转都意味着下一个页面的资源需要被重新请求, 如果网速慢的话, 用户将在一段时间内只能看到白屏;
+* 个人觉得更加重要的一点是, 在项目庞大用户量巨大的场景下, 重复发送的资源请求将会对服务造成巨大的负担, 每一次跳转都需要页面的刷新意味着不同页面中可能存在的能够复用的资源将也会被重新请求, 造成服务器资源的浪费;
+
+为了解决以上的几点问题, 机智的程序员们发现并提出了前端路由的概念: 
+
+前端路由
+-----------------
+
+如何解决以上的痛点呢? 前端路由要实现的就是让浏览器在 url 跳转的时候无需向后台重新发送模板文件的请求重新渲染页面, 希望在第一次页面打开的时候, 将所有网页内容所需要的模板文件和对应的内容资源请求到本地, 浏览器首先渲染出初始的 html 模板, 然后通过 web api 实现监听 url 的变化, 并将 url 对应的的内容资源渲染到页面的指定 dom 当中.
+那么问题来了, 如何才能够实现 url 切换但是浏览器不重新发送请求呢? 根据实现的方式, 前端路由又被分为了 hash 路由和 history 路由
+
+hash 路由
+-----------------
+
+一个网站的 url 包含着一个重要组成部分 hash 也就是锚点, 它的设计的初衷是为了定位网站内容的位置通过改变 url hash 将浏览器滚动到对应的 dom 的位置, 如果网页中找不到对应的hash锚点则不会出现滚动, hash 的变化可以通过监听 popstate 事件来进行处理. 因此这个特性完美契合了前端路由的需求, 因此可以用来做做文章
+
+下面是对于 hash 路由的实现, 为了方便大家查看效果, 我尽量全部使用 vanilla js 进行编写, 尽量做到无需编译, 只需要 copy 到 script tag 当中即可, 将会实现类似 vue-router 中的 push, go, replace 等操作
+
+```javascript
+//这里需要你在html中创建一个id为app的dom用于放置内容
+var appNode = document.querySelector("#app");
+window.addEventListener("hashchange", () => {
+  Router.hash.handler();
+});
+var Router = {
+  //list = 路由列表, 模仿vue-router中的routerlist写法, component做了简化只是一段文字;
+  list: [
+    { path: "/", name: "index", component: "This is index page" },
+    { path: "/hash", name: "hash", component: "This is hash page" },
+    { path: "/history", name: "history", component: "This is history page" },
+    { path: "*", name: "notFound", component: "404 NOT FOUND" }
+  ],
+  //输入path:String对应路由列表中的path, 实现渲染功能
+  render: function(path) {
+    var ele = null;
+    //用于存储没有匹配路径时的404内容, 在这里默认路由列表中最后一个元素为404内容
+    var naEle = this.list[this.list.length - 1];
+    //通过path找出路由列表中对应的路由信息
+    this.list.forEach(item => {
+      if (item.path === path) ele = item;
+    });
+    //如果找到了path对应的路由信息, 则返回; 没找到的话, 返回404信息
+    ele = ele ? ele : naEle;
+    //将路由信息中的component加载进根节点
+    appNode.innerHTML = ele.component;
+  },
+  hash: {
+    //渲染
+    handler: function() {
+      Router.render(this.getState());
+    },
+    //获取当前hash
+    getState: function() {
+      var hash = window.location.hash;
+      hash = hash ? hash.slice(1) : "/";
+      return hash;
+    },
+    getUrl: function(path) {
+      var href = window.location.href;
+      var i = href.indexOf("#");
+      var base = i >= 0 ? href.slice(0, i) : href;
+      return base + "#" + path;
+    },
+    push: function(path) {
+      window.location.hash = path;
+    },
+    replace: function(path) {
+      window.location.replace(this.getUrl(path));
+    },
+    go: function(n) {
+      window.history.go(n);
+    }
+  }
+};
+//加载初始页面
+Router.render(window.location.hash ? window.location.hash.slice(1) : "/");
+```
+
+以上就是 hash router 简单的实现, 可以通过控制台输入 Router.hash.push('/history')或者 Router.hash.replace('/hash')或者 Router.hash.go(-1)来进行操作, 相信熟悉 vue-router 的小伙伴对于这些操作不会陌生的
+
+history 路由
+-----------------
+
+hash router 似乎已经满足了我们对于前端路由的一切想象, 然而, 对用户(k)体(p)验(i)精益求精的小伙伴们似乎不满足于此: **靠, 这个#在 url 里面也太丑了吧**, 为此, 机智的前端程序员们又在 web api 文档中发现了一个新的 api, history 系列中有两个 api: replaceState, pushState 也可以满足改变 url 并且不发送请求的要求, 对于 popstate 事件的也能够监听 history stack 中的变化, 但是需要注意的坑点是 popstate 事件本身却不能被 replaceState, pushState 所触发, 但是这难不倒我们机智的程序员, replaceState, pushState 只要能改变 url 就好, 我们在调 api 时手动调用一下渲染函数即可, 一切似乎迎刃而解了; 但是很快又有几片乌云出现在了天空中, 调用 history.go api 或者直接点击前进后退刷新按钮时, 依然免不了会对当前的 url 进行请求, 然而此时由于 url 已经发生了改变, 在后台完全不做路由适配功能的情况下, 当前请求只能是返回一个红红的 404, 这时候无奈前端只能化身全栈, 在服务端对请求做一些适配, 在 url 不符合特定规则时, 确保其不 404, 一般来说就是返回初始请求时所需要的资源
+
+下面是对 history的代码实现, 因为pushState api对于url有限制不能使用在file:///的路径上, 因此小伙伴们可以在index.html所在文件夹下用http-server或者webpack起一个本地服务, 为了防止 404 小伙伴们可以用 webpack 起本地服务并且把 devServer 中的 historyApiFallback 设置为 true, 就可以做到找不到资源的请求重新定位到 index.html. 如果不关心 404 情况指向跑一跑代码的话, 依旧可以直接编辑一个 html 文件, copy 代码到 script tag, 使用方法和 hash 中的代码类似, 只是调用方式改为控制台输入Router.history[fn]
+
+```javascript
+var appNode = document.querySelector("#app");
+window.addEventListener("popstate", () => {
+  Router.history.handler();
+});
+var Router = {
+  list: [
+    { path: "/", name: "index", component: "This is index page" },
+    { path: "/hash", name: "hash", component: "This is hash page" },
+    { path: "/history", name: "history", component: "This is history page" },
+    { path: "*", name: "notFound", component: "404 NOT FOUND" }
+  ],
+  render: function(path) {
+    var ele = null;
+    var naEle = this.list[this.list.length - 1];
+    this.list.forEach(item => {
+      if (item.path === path) ele = item;
+    });
+    ele = ele ? ele : naEle;
+    appNode.innerHTML = ele.component;
+  },
+  history: {
+    //渲染
+    handler: function() {
+      Router.render(this.getState());
+    },
+    //获取当前path
+    getState: function() {
+      const path = window.location.pathname;
+      return path ? path : '/';
+    },
+    //pushState相关参数说明
+    //状态对象（state object）：一个JavaScript对象，与用pushState()方法创建的新历史记录条目关联。无论何时用户导航到新创建的状态，会触发popstate事件，并能在事件中使用该对象。
+    //标题（title）：一般浏览器会忽略，最好传入null。
+    //地址（URL）：就是需要新增的历史记录的地址，浏览器不会去直接加载改地址，但后面也可能会去尝试加载该地址。此外需要注意的是，传入的URL与当前URL应该是同源的。
+    push: function(path) {
+      window.history.pushState(null, null, path)
+      this.handler()
+    },
+    replace: function(path) {
+      window.history.replaceState(null, null, path)
+      this.handler()
+    },
+    go: function(n) {
+      window.history.go(n);
+    }
+  }
+};
+//加载初始页面
+Router.render(window.location.pathname);
+```
+前端路由的缺点
+-----------------
+
+任何事情都是不可能完美的, 前端路由也一样, 存在着以下几个问题:
+1. 首页加载时需要的资源更多了, 需要对首屏加载速度进行优化;
+2. seo方面存在问题, 很多应用的分享功能并不会执行内联的js, 导致无法对动态生成的内容进行分析并生成预览;
+3. 前端路由在使用浏览器的前进后退按键进行导航时, 依旧会向后台重新发送请求;
+4. 前进后退是浏览器无法记住之前浏览所在的位置, 虽然可以通过代码实现记录但是毕竟是多了一步操作;
+
+总结
+==================
+
+以上介绍了前端路由的由来和两种实现方式, 如果对各位看官有帮助的话, 欢迎点赞和关注, 以后我会不定期更新文章, 欢迎各位前来交流
